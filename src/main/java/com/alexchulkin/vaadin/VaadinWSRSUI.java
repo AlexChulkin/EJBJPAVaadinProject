@@ -14,6 +14,7 @@ import com.vaadin.data.Item;
 import com.vaadin.data.Property;
 import com.vaadin.data.util.BeanItemContainer;
 import com.vaadin.event.ItemClickEvent;
+import com.vaadin.server.BrowserWindowOpener;
 import com.vaadin.server.VaadinRequest;
 import com.vaadin.server.VaadinServlet;
 import com.vaadin.ui.Table;
@@ -29,34 +30,21 @@ import java.util.List;
 import static java.util.Locale.ITALIAN;
 import static java.util.TimeZone.SHORT;
 
-//import com.alexchulkin.rs.EmpRSClient;
-//import org.jboss.resteasy.plugins.providers.RegisterBuiltin;
-//import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
-//import org.jboss.resteasy.spi.ResteasyProviderFactory;
-
 @SuppressWarnings("serial")
 @Theme("vaadin_ws_rs")
 public class VaadinWSRSUI extends UI {
-    private static Window previousWindow;
-
+    final EmpRSClient empRSClient = new EmpRSClient();
+    final EmpWSClient empWSClient = new EmpWSClient();
+    
     @Override
     protected void init(VaadinRequest request) {
-        final EmpRSClient empRSClient = new EmpRSClient();
-        final EmpWSClient empWsClient = new EmpWSClient();
-
-        TableConstructor tableConstructor = new TableConstructor();
-        Table mainTable = tableConstructor.getMainTable(empWsClient);
+        Table mainTable = TableConstructor.getMainTable(empWSClient);
         setContent(mainTable);
 
         mainTable.addItemClickListener((ItemClickEvent itemClickEvent) -> {
-            if (previousWindow!= null) {
-                getUI().removeWindow(previousWindow);
-            }
-            Table supplTable = tableConstructor.getSupplementaryTable(empRSClient, ((EmpDto) itemClickEvent.getItemId()).getId());
-            previousWindow = new Window();
-            previousWindow.setContent(supplTable);
-            previousWindow.setModal(true);
-            getUI().addWindow(previousWindow);
+            BrowserWindowOpener popupOpener = new BrowserWindowOpener(MyPopupUI.class);
+            popupOpener.setFeatures("height=300,width=300");
+            popupOpener.setParameter("id", ((EmpDto) itemClickEvent.getItemId()).getId().toString());
         });
     }
 
@@ -67,22 +55,20 @@ public class VaadinWSRSUI extends UI {
 
     private static class TableConstructor {
         private static final DateFormat format = DateFormat.getDateInstance(SHORT, ITALIAN);
-        private static int number = 0;
-        private Table.ColumnGenerator dateColumnGenerator = (Table source, Object itemId, Object columnId) -> {
+        private static Table.ColumnGenerator dateColumnGenerator = (Table source, Object itemId, Object columnId) -> {
             Item item = source.getItem(itemId);
             @SuppressWarnings("unchecked")
             Property<Date> property = (Property<Date>) item.getItemProperty(columnId);
             Date value = property.getValue();
             return format.format(value);
         };
-        private Table.ColumnGenerator simpleColumnGenerator = (Table source, Object itemId, Object columnId) -> {
+        private static  Table.ColumnGenerator simpleColumnGenerator = (Table source, Object itemId, Object columnId) -> {
             return source.getItem(itemId).getItemProperty(columnId).getValue().toString();
         };
 
-        public Table getMainTable(EmpWSClient empWsClient) {
+        public static Table getMainTable(EmpWSClient empWSClient) {
             BeanItemContainer<EmpDto> container = new BeanItemContainer<>(EmpDto.class);
-            System.out.println(empWsClient.listAllEmps());
-            container.addAll(empWsClient.listAllEmps());
+            container.addAll(empWSClient.listAllEmps());
 
             Table table = new Table("All employees", container);
             table.addGeneratedColumn("id", simpleColumnGenerator);
@@ -100,11 +86,9 @@ public class VaadinWSRSUI extends UI {
             table.setRowHeaderMode(Table.RowHeaderMode.PROPERTY);
             table.setItemCaptionPropertyId("displayName");
             return table;
-
         }
 
-        public Table getSupplementaryTable(EmpRSClient empRSClient, Long id) {
-
+        public static Table getSupplementaryTable(EmpRSClient empRSClient, Long id) {
             BeanItemContainer<TktDto> container = new BeanItemContainer<>(TktDto.class);
             try {
                 List<TktDto> tktsList = empRSClient.getEmpTktsXML(id);
@@ -119,8 +103,8 @@ public class VaadinWSRSUI extends UI {
             table.addGeneratedColumn("code", simpleColumnGenerator);
             table.addGeneratedColumn("description", simpleColumnGenerator);
             table.setVisibleColumns("id", "parentTicketId", "code", "description");
-//            table.setColumnHeaders("Id", "Parent ticket id", "Code", "Description");
-            table.setColumnHeaders(Collections.nCopies(4, "").toArray(new String[0]));
+            table.setColumnHeaders("Id", "Parent ticket id", "Code", "Description");
+//            table.setColumnHeaders(Collections.nCopies(4, "").toArray(new String[0]));
             table.setColumnWidth("id", 100);
             table.setColumnWidth("parentTicketId", 200);
             table.setColumnWidth("code", 200);
@@ -130,5 +114,15 @@ public class VaadinWSRSUI extends UI {
             return table;
         }
     }
+
+    private class MyPopupUI extends UI {
+        @Override
+        protected void init(VaadinRequest request) {
+            setContent(TableConstructor.getSupplementaryTable(empRSClient,
+                    Long.valueOf(request.getParameter("id"))));
+        }
+
+    }
 }
+
 
